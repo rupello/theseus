@@ -53,7 +53,6 @@ function decide(){
     d=(d+1)%4;
   }
 }
-// fix pushDir ordering with heading tracking
 function dur(type){const s=+$('speed').value, k=2.2/s; return (type==='move'?.55:type==='turn'?.28:.32)*k}
 function startAction(a){
   state.cur={...a,t:0,dur:dur(a.type),a0:state.angle,from:cellPos(state.mouse.x,state.mouse.z)};

@@ -20,7 +20,7 @@ for(let z=0;z<N;z++)for(let x=0;x<N;x++){
   memCells.push({c,b1,b0,val:c.querySelector('.tag b')});
 }
 
-// logic bank: 40 relays by function
+// logic bank: 33 relays by function
 const GROUPS=[
   ['Square selector','from the carriage commutator',[['CA','column A'],['CB','column B'],['CC','column C'],['CD','column D'],['CE','column E'],['R1','row 1'],['R2','row 2'],['R3','row 3'],['R4','row 4'],['R5','row 5']]],
   ['Heading','read from turning-shaft cams',[['D1','heading bit 1'],['D0','heading bit 0'],['STEP','turn 90° clockwise']]],
