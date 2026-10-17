@@ -1,8 +1,11 @@
 import {$} from '../config.js';
 
-// a short filtered noise burst per relay change, throttled; off unless the box is ticked
+// Relay click sound, off unless 'Relay clicks' is ticked.
 
 let audio=null, lastClick=0;
+
+// Play one click: a 12 ms burst of noise through a band-pass filter, pitch varied
+// a little each time. At most one every 22 ms, so a burst of relays doesn't roar.
 export function click(){
   if(!$('snd').checked) return;
   const now=performance.now(); if(now-lastClick<22) return; lastClick=now;
@@ -15,4 +18,7 @@ export function click(){
     src.buffer=buf; src.connect(f).connect(g).connect(audio.destination); src.start();
   }catch(e){}
 }
+
+// Browsers only allow sound after a user action, so create the audio context
+// when the box is ticked.
 $('snd').addEventListener('change',()=>{try{if($('snd').checked&&!audio)audio=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}});

@@ -1,5 +1,12 @@
 import {no,nc,lm,sw,pb,par,R,NOTE} from './dsl.js';
 
+// The four sheets of the wiring diagram, written with the helpers in dsl.js.
+// Pure data: draw.js turns it into SVG, and updateSchematic lights it as the mouse runs.
+//
+//   Sheet 1  Sensing and selection   whiskers, centring, square selector, heading
+//   Sheet 2  Mode and sequence       run, explore/goal strategy, SQ1 → SQ2 → SQ3, write
+//   Sheet 3  Drive                   electromagnet, turn motor, drive motors, bell
+//   Sheet 4  Memory cell             two memory relays + mismatch, for one square
 export const SHEETS=[
  {title:'Sensing and selection',inputs:'Inputs on the machine: <b>W</b> whisker touching a partition · <b>G</b> whisker touching the goal pin · <b>CX, CY</b> centring cams on the carriage · <b>XA–XE, Y1–Y5</b> commutator segments, one per column and row · <b>HN, HE, HS, HW</b> heading cams on the turning shaft.',
   rungs:[

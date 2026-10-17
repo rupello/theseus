@@ -4,8 +4,11 @@ import {setRelay,memCells} from './relays/rack.js';
 import {arrows} from './scene/props.js';
 import {lampMats} from './scene/setup.js';
 
+// Keeps the page's displays of the mouse's memory and progress up to date.
 const amber=C('--amber');
 
+// Show state.mem everywhere it appears: the memory-bank relay pairs and square labels,
+// the arrows on the floor, the lamps on the cabinet front, and the counters.
 export function renderMemory(){
   let n=0, bits=0;
   for(let i=0;i<N*N;i++){
@@ -20,4 +23,6 @@ export function renderMemory(){
   }
   $('sMem').textContent=n+'/25'; $('memCount').textContent=`${bits} of 50 energised`; $('sExp').textContent=state.expMoves; $('sRec').textContent=state.recMoves==null?'—':state.recMoves;
 }
+
+// Set the status line. Takes HTML, so messages can use <b>.
 export function status(html){$('status').innerHTML=html}

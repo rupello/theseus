@@ -1,8 +1,10 @@
 import {$} from '../config.js';
 import {E,drawContact,BR} from './draw.js';
 
-// help dialog: symbol legend + worked example, drawn with the same primitives as the diagram
+// Fill in the 'How to read this' dialog: the symbol list, a worked example drawn with
+// the same code as the sheets, and the open/close handlers.
 export function initHelp(){
+  // [symbol, name, explanation]; a symbol is a contact item or a keyword for the special cases.
   const syms=[
     [{t:'no',r:'SQ1'},'Normally open contact','Open at rest. Closes when relay SQ1 is energised.'],
     [{t:'nc',r:'SQ2'},'Normally closed contact','Closed at rest. Opens when relay SQ2 is energised.'],
@@ -25,7 +27,12 @@ export function initHelp(){
     else drawContact(s,sym,4,y,false);
     const p=document.createElement('div'); p.innerHTML=`<strong>${name}</strong>${txt}`; d.appendChild(p); host.appendChild(d);
   });
-  // worked example: start/stop latch
+  // Worked example: the start/stop latch, a relay that holds itself on.
+  //
+  //   │──┬──┤ ├──┬──┤/├────────────( HOLD )──│
+  //   │  │ PB-EX │   BELL                     │
+  //   │  └──┤ ├──┘   holds itself in until the bell breaks the rung
+  //   │    HOLD
   const ex=$('helpEx'), y1=58, y2=y1+BR, L=24, Rr=600, cx=480;
   E('line',{x1:L,y1:4,x2:L,y2:132,class:'rail'},ex); E('line',{x1:Rr,y1:4,x2:Rr,y2:132,class:'rail'},ex);
   const t=E('text',{x:L+10,y:20,class:'desc'},ex); t.textContent='Start button, or HOLD’s own contact, keeps the HOLD coil energised until the bell rings';
@@ -43,6 +50,7 @@ export function initHelp(){
   E('line',{x1:cx+14,y1:y1,x2:Rr,y2:y1,class:'w'},ex);
   const a1=E('text',{x:L+75,y:y2+28,class:'xr','text-anchor':'middle'},ex); a1.textContent='holds itself in';
   const a2=E('text',{x:L+181,y:y1+30,class:'xr','text-anchor':'middle'},ex); a2.textContent='breaks to stop';
+  // Open from the button; close with × or a click on the backdrop.
   const dlg=$('help');
   $('helpOpen').addEventListener('click',()=>{ if(dlg.showModal) dlg.showModal(); else dlg.setAttribute('open','') });
   $('helpClose').addEventListener('click',()=>dlg.close());

@@ -1,7 +1,7 @@
 import {$} from '../config.js';
 import {E,drawContact} from './draw.js';
 
-// legend symbols
+// Draw the symbol key above the sheets, using the same drawing code as the sheets.
 export function renderLegend(){
   const items=[[{t:'no'},'Normally open contact: closes when its relay operates'],[{t:'nc'},'Normally closed contact: opens when its relay operates'],
     [{t:'no',inp:1},'Switch or cam on the machine'],[{t:'no',inp:1,pb:1},'Pushbutton'],['coil','Relay coil; SR marks slow-release'],['lit','Lit: contact closed or coil energised, live']];
