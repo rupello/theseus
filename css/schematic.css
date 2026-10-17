@@ -1,0 +1,49 @@
+/* ---- wiring diagram ---- */
+.schem{display:grid;gap:16px}
+.lgd{display:flex;flex-wrap:wrap;gap:6px 18px}
+.lgd .li{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
+.sheets{display:grid;gap:20px}
+.sheet{display:grid;gap:8px;min-width:0}
+.sheet h3{margin:0;font-size:17px;font-weight:700;letter-spacing:.02em}
+.sheet h3 .sn{font-family:var(--f-mono);font-weight:400;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-right:10px}
+.sheet h3 #memsq{font-family:var(--f-mono);color:var(--amber);font-weight:500}
+.sheet .legend b{color:var(--fg);font-family:var(--f-mono);font-weight:500;font-size:11.5px}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:5px;background:var(--bg)}
+svg.lad{display:block;max-width:none}
+svg .w{stroke:var(--wire);stroke-width:1.4;fill:none}
+svg .dot{fill:var(--wire)}
+svg .rail{stroke:var(--muted);stroke-width:2.5}
+svg .s{stroke:var(--fg);stroke-width:1.8;fill:none}
+svg .cf{fill:var(--bg)}
+svg .nm{font-family:var(--f-mono);font-size:11px;fill:var(--fg)}
+svg .in .s{stroke:var(--copper)} svg .in .nm{fill:var(--copper)}
+svg .tg{font-family:var(--f-mono);font-size:8.5px;fill:var(--muted);letter-spacing:.04em}
+svg .desc{font-family:var(--f-display);font-size:12.5px;fill:var(--muted)}
+svg .rn,svg .xr{font-family:var(--f-mono);font-size:10.5px;fill:var(--muted)}
+svg .note{font-family:var(--f-display);font-style:italic;font-size:12.5px;fill:var(--muted)}
+svg .on .s,svg .on .w{stroke:var(--amber)} svg .on .nm{fill:var(--amber)}
+svg .coil.on .cf{fill:color-mix(in srgb,var(--amber) 28%,var(--bg))} svg .coil.on .tg{fill:var(--fg)}
+.hd-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.helpbtn{display:inline-flex;align-items:center;gap:7px;padding:5px 11px 5px 6px;font-size:13px;border-radius:999px;text-align:left}
+.helpbtn span{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--amber);color:#1d1508;font-family:var(--f-mono);font-weight:500;font-size:12px}
+dialog#help{width:min(760px,calc(100vw - 32px));max-height:min(86vh,900px);padding:0;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--fg);box-shadow:0 24px 70px rgba(0,0,0,.55);overflow:hidden}
+dialog#help[open]{display:flex;flex-direction:column}
+dialog#help::backdrop{background:rgba(8,11,10,.68)}
+.dlg-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.dlg-head h2{margin:0;font-size:21px;font-weight:700;letter-spacing:.02em;text-wrap:balance}
+.dlg-x{font-size:22px;line-height:1;padding:4px 10px;text-align:center}
+.dlg-body{overflow-y:auto;padding:16px 18px 22px;display:grid;gap:20px}
+.dlg-body section{display:grid;gap:8px}
+.dlg-body p,.dlg-body li,.dlg-body dd{font-size:14px;line-height:1.5;color:var(--muted);max-width:68ch;margin:0}
+.dlg-body strong,.dlg-body b,.dlg-body em{color:var(--fg);font-weight:600}
+.dlg-body b{font-family:var(--f-mono);font-weight:500;font-size:12.5px}
+.dlg-body ul{margin:0;padding-left:18px;display:grid;gap:6px}
+.sym{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px 18px}
+.sym .li{display:grid;grid-template-columns:70px minmax(0,1fr);align-items:center;gap:8px;font-size:13.5px;color:var(--muted)}
+.sym .li strong{color:var(--fg);font-weight:600;display:block}
+.ex svg{display:block;max-width:none}
+dl.tags{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 14px;margin:0}
+dl.tags dt{font-family:var(--f-mono);font-size:12px;color:var(--amber);padding-top:2px}
+.notes{display:grid;gap:8px}
+.notes p{margin:0;font-size:13.5px;color:var(--muted);max-width:75ch}
+.notes p strong{color:var(--fg);font-weight:600}
