@@ -1,44 +1,9 @@
-const N=5, H=0.32, T=0.06;
-const DX=[0,1,0,-1], DZ=[-1,0,1,0], ARROW=['↑','→','↓','←'], NAMES=['north','east','south','west'];
-const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const css = getComputedStyle(document.documentElement);
-const C = n => new THREE.Color(css.getPropertyValue(n).trim());
+import {N,H,T,DX,DZ,ARROW,reduce,C,COLS,idx,$} from './config.js';
+import {maze,wallAt,genMaze,reachable} from './maze.js';
+import {renderSheets,updateSchematic} from './ladder/draw.js';
+import {renderLegend} from './ladder/legend.js';
+import {initHelp} from './ladder/help.js';
 
-/* ---------- maze state ---------- */
-let h, v;   // h[x][z]: wall between (x,z)/(x,z+1); v[x][z]: between (x,z)/(x+1,z)
-function wallAt(x,z,d){
-  const nx=x+DX[d], nz=z+DZ[d];
-  if(nx<0||nz<0||nx>=N||nz>=N) return true;
-  if(d===0) return h[x][z-1]; if(d===2) return h[x][z];
-  if(d===1) return v[x][z]; return v[x-1][z];
-}
-function setBetween(x,z,d,val){
-  if(d===0) h[x][z-1]=val; else if(d===2) h[x][z]=val;
-  else if(d===1) v[x][z]=val; else v[x-1][z]=val;
-}
-function genMaze(){
-  h=[...Array(N)].map(()=>Array(N-1).fill(true));
-  v=[...Array(N-1)].map(()=>Array(N).fill(true));
-  const seen=new Set(['0,0']), stack=[[0,0]];
-  while(stack.length){
-    const [x,z]=stack[stack.length-1];
-    const opts=[0,1,2,3].filter(d=>{const nx=x+DX[d],nz=z+DZ[d];return nx>=0&&nz>=0&&nx<N&&nz<N&&!seen.has(nx+','+nz)});
-    if(!opts.length){stack.pop();continue}
-    const d=opts[Math.floor(Math.random()*opts.length)];
-    setBetween(x,z,d,false);
-    const nx=x+DX[d],nz=z+DZ[d]; seen.add(nx+','+nz); stack.push([nx,nz]);
-  }
-  for(let i=0;i<3;i++){ // a few loops, as Shannon's partitions often made
-    if(Math.random()<.5){h[Math.floor(Math.random()*N)][Math.floor(Math.random()*(N-1))]=false}
-    else{v[Math.floor(Math.random()*(N-1))][Math.floor(Math.random()*N)]=false}
-  }
-}
-function reachable(a,b){
-  const q=[[a.x,a.z]], seen=new Set([a.x+','+a.z]);
-  while(q.length){const [x,z]=q.shift(); if(x===b.x&&z===b.z) return true;
-    for(let d=0;d<4;d++){ if(wallAt(x,z,d)) continue; const k=(x+DX[d])+','+(z+DZ[d]); if(!seen.has(k)){seen.add(k);q.push([x+DX[d],z+DZ[d]])} }}
-  return false;
-}
 
 /* ---------- three.js scene ---------- */
 const canvas=document.getElementById('c'), stage=document.getElementById('stage');
@@ -99,7 +64,7 @@ function addSlot(type,x,z){
 }
 for(let x=0;x<N;x++)for(let z=0;z<N-1;z++)addSlot('h',x,z);
 for(let x=0;x<N-1;x++)for(let z=0;z<N;z++)addSlot('v',x,z);
-function syncWalls(){slots.forEach(s=>s.mesh.visible= s.type==='h'?h[s.x][s.z]:v[s.x][s.z])}
+function syncWalls(){slots.forEach(s=>s.mesh.visible= s.type==='h'?maze.h[s.x][s.z]:maze.v[s.x][s.z])}
 
 // hover ghosts
 const ghostMat=new THREE.MeshStandardMaterial({color:0xf3a93a,emissive:0xf3a93a,emissiveIntensity:.6,transparent:true,opacity:.35,depthWrite:false});
@@ -150,13 +115,10 @@ let mem=Array(N*N).fill(-1);
 let mouse={x:0,z:N-1}, angle=0, start={x:0,z:N-1}, goal={x:N-1,z:0};
 let mode='idle', queue=[], cur=null, expMoves=0, recMoves=null, recallSeen=null, clickMode='goal';
 const cellPos=(x,z)=>new THREE.Vector3(x-N/2+.5,0,z-N/2+.5);
-const idx=(x,z)=>z*N+x;
 
-const $=id=>document.getElementById(id);
 const amber=C('--amber');
 
 /* ---------- relay rack ---------- */
-const COLS='ABCDE';
 let audio=null, lastClick=0;
 function click(){
   if(!$('snd').checked) return;
@@ -215,198 +177,10 @@ const dirOf=a=>((Math.round(-a/(Math.PI/2))%4)+4)%4;
 function headingNow(){return dirOf(angle)}
 
 /* ---------- wiring diagram (relay ladder) ---------- */
-const SV='http://www.w3.org/2000/svg';
-function E(tag,a,p){const e=document.createElementNS(SV,tag);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e}
-const no=r=>({t:'no',r}), nc=r=>({t:'nc',r}), lm=r=>({t:'no',r,lm:1});
-const sw=(r,k)=>({t:k||'no',r,inp:1}), pb=(r,k)=>({t:k||'no',r,inp:1,pb:1});
-const par=(...b)=>({t:'par',b});
-const R=(desc,items,coil,tag,load)=>({desc,items,coil,tag,load});
-const NOTE=note=>({note});
-const DISP={Ci:'Cᵢ',Rj:'Rⱼ',M1ij:'M1ᵢⱼ',M0ij:'M0ᵢⱼ'};
-const SHEETS=[
- {title:'Sensing and selection',inputs:'Inputs on the machine: <b>W</b> whisker touching a partition · <b>G</b> whisker touching the goal pin · <b>CX, CY</b> centring cams on the carriage · <b>XA–XE, Y1–Y5</b> commutator segments, one per column and row · <b>HN, HE, HS, HW</b> heading cams on the turning shaft.',
-  rungs:[
-  R('Whisker touches a partition',[sw('W')],'WSK'),
-  R('Whisker touches the goal pin',[sw('G')],'BELL'),
-  R('Carriage centred in a square: both centring cams closed',[sw('CX'),sw('CY')],'CTR'),
-  R('Column selector: commutator segment under the carriage',[sw('XA')],'CA'),
-  NOTE('CB, CC, CD are wired the same from segments XB, XC, XD'),
-  R('',[sw('XE')],'CE'),
-  R('Row selector',[sw('Y1')],'R1'),
-  NOTE('R2, R3, R4 are wired the same from segments Y2, Y3, Y4'),
-  R('',[sw('Y5')],'R5'),
-  R('Heading bit 1: cam closed facing south or west',[par([sw('HS')],[sw('HW')])],'D1'),
-  R('Heading bit 0: cam closed facing east or west',[par([sw('HE')],[sw('HW')])],'D0'),
- ]},
- {title:'Mode and sequence',inputs:'Pushbuttons: <b>PB-EX</b> start exploring · <b>PB-GL</b> start a goal run · <b>PB-STOP</b> stop · <b>PB-CLR</b> clear memory.',
-  rungs:[
-  R('Run holding circuit: either start button, held until the bell rings or Stop',[par([pb('PB-EX')],[pb('PB-GL')],[no('HOLD')]),nc('BELL'),pb('PB-STOP','nc')],'HOLD'),
-  R('Exploration strategy: start button, or a wall met while following memory',[par([pb('PB-EX')],[no('GOAL'),no('WSK')],[no('EXPL'),pb('PB-GL','nc'),no('HOLD')])],'EXPL'),
-  R('Goal strategy: follow memory until a wall is met',[par([pb('PB-GL')],[no('GOAL'),nc('EXPL'),no('HOLD')])],'GOAL'),
-  R('Step 1, load: mouse centred and no other step running',[no('HOLD'),no('CTR'),nc('SQ2'),nc('SQ3'),nc('BACK'),nc('LEFT')],'SQ1','SR'),
-  R('Read memory during step 1',[no('SQ1'),nc('SQ2')],'RD'),
-  R('Step 2, turn: shaft now matches memory, or the mouse has backed home from a wall',[par([no('SQ1'),lm('RD'),nc('MIS'),nc('TURN')],[no('BACK'),no('CTR')],[no('SQ2'),nc('SQ3')]),no('HOLD')],'SQ2'),
-  R('Step pulse, one 90° turn: entering step 2 while exploring, or after backing off a wall',[par([no('SQ1'),no('SQ2'),no('EXPL')],[no('BACK'),no('CTR')])],'STEP','SR'),
-  R('Step 3, advance: turn finished; held until a wall or the next square',[par([no('SQ2'),nc('STEP'),nc('TURN')],[no('SQ3'),nc('BACK'),par([nc('LEFT')],[nc('CTR')])]),no('HOLD')],'SQ3'),
-  R('Carriage has left the centre of the square',[no('SQ3'),par([nc('CTR')],[no('LEFT')])],'LEFT'),
-  R('Back off: whisker hit a wall; held until the carriage is centred again',[par([no('SQ3'),no('WSK')],[no('BACK'),nc('CTR')])],'BACK','SR'),
-  R('Write: store the heading in this square as the carriage departs',[no('SQ3'),no('CTR')],'WR'),
-  R('Clear memory',[pb('PB-CLR')],'CLR'),
- ]},
- {title:'Drive',inputs:'<b>DET</b> detent cam, closed at each 90° position of the turning shaft. The motor armatures themselves are switched by contacts of MX, MY and TURN; POL’s changeover contacts reverse both drive motors.',
-  rungs:[
-  R('Electromagnet holds the mouse while running',[no('HOLD')],'EM'),
-  R('Turn motor: run to the stored heading, or one 90° step; held between detents',[par([no('RD'),no('MIS')],[no('STEP')],[no('TURN'),sw('DET','nc')]),no('HOLD')],'TURN'),
-  R('East–west motor: heading east or west',[par([no('SQ3')],[no('BACK')]),no('D0')],'MX'),
-  R('North–south motor: heading north or south',[par([no('SQ3')],[no('BACK')]),nc('D0')],'MY'),
-  R('Polarity: drive east or south, reversed while backing off',[par([no('D1'),nc('D0'),nc('BACK')],[nc('D1'),no('D0'),nc('BACK')],[no('D1'),no('D0'),no('BACK')],[nc('D1'),nc('D0'),no('BACK')])],'POL'),
-  R('Goal bell',[no('BELL')],'bell',null,true),
- ]},
- {title:'Memory cell',mem:true,inputs:'Drawn for the square under the carriage. Each of the 25 squares has its own copy of these three rungs, wired through its own column and row contacts, so 25 squares × 2 relays = 50 memory relays. Only the selected square’s C·R contacts close.',
-  rungs:[
-  R('Bit 1: write D1 into the selected square; otherwise hold',[par([no('WR'),no('Ci'),no('Rj'),no('D1')],[nc('CLR'),par([nc('WR')],[nc('Ci')],[nc('Rj')]),no('M1ij')])],'M1ij','SR'),
-  R('Bit 0: write D0 into the selected square; otherwise hold',[par([no('WR'),no('Ci'),no('Rj'),no('D0')],[nc('CLR'),par([nc('WR')],[nc('Ci')],[nc('Rj')]),no('M0ij')])],'M0ij','SR'),
-  R('Mismatch: stored heading differs from the turning shaft',[no('RD'),no('Ci'),no('Rj'),par([no('M1ij'),nc('D1')],[nc('M1ij'),no('D1')],[no('M0ij'),nc('D0')],[nc('M0ij'),no('D0')])],'MIS'),
- ]},
-];
-const CW=62, BR=44, PP=14, X0=64, WD=1000, COILX=WD-250;
-const live=[];
-function meas(items){let w=0,h=1;for(const it of items){if(it.t==='par'){let bw=0,bh=0;it.b.forEach(b=>{const m=meas(b);b._h=m.h;bw=Math.max(bw,m.w);bh+=m.h});it._w=bw+PP*2;it._h=bh;w+=it._w;h=Math.max(h,bh)}else w+=CW}return{w,h}}
-function drawContact(g,it,x,y,track){
-  const c=x+CW/2, gp=E('g',{class:'ct'+(it.inp?' in':'')},g);
-  E('line',{x1:x,y1:y,x2:c-6,y2:y,class:'w'},gp); E('line',{x1:c+6,y1:y,x2:x+CW,y2:y,class:'w'},gp);
-  E('line',{x1:c-6,y1:y-10,x2:c-6,y2:y+10,class:'s'},gp); E('line',{x1:c+6,y1:y-10,x2:c+6,y2:y+10,class:'s'},gp);
-  if(it.t==='nc') E('line',{x1:c-11,y1:y+11,x2:c+11,y2:y-11,class:'s'},gp);
-  if(it.pb){E('line',{x1:c,y1:y-10,x2:c,y2:y-17,class:'s'},gp);E('line',{x1:c-6,y1:y-17,x2:c+6,y2:y-17,class:'s'},gp)}
-  if(it.r){const t=E('text',{x:c,y:y-(it.pb?21:15),class:'nm','text-anchor':'middle'},gp); t.textContent=DISP[it.r]||it.r;
-    if(it.lm){const s=E('tspan',{class:'tg',dx:'3'},t); s.textContent='LM'}}
-  if(track) live.push({el:gp,r:it.r,k:it.t});
-}
-function drawSeries(g,items,x,y){
-  for(const it of items){
-    if(it.t==='par'){
-      let yy=y,last=y; const xr=x+it._w;
-      it.b.forEach(b=>{E('line',{x1:x,y1:yy,x2:x+PP,y2:yy,class:'w'},g); const ex=drawSeries(g,b,x+PP,yy); E('line',{x1:ex,y1:yy,x2:xr,y2:yy,class:'w'},g); last=yy; yy+=b._h*BR});
-      E('line',{x1:x,y1:y,x2:x,y2:last,class:'w'},g); E('line',{x1:xr,y1:y,x2:xr,y2:last,class:'w'},g);
-      E('circle',{cx:x,cy:y,r:2.2,class:'dot'},g); E('circle',{cx:xr,cy:y,r:2.2,class:'dot'},g);
-      x=xr;
-    } else { drawContact(g,it,x,y,true); x+=CW }
-  }
-  return x;
-}
-let rungNo=0; const allRungs=[];
-function renderSheet(sh,k,host){
-  const wrap=document.createElement('div'); wrap.className='sheet';
-  wrap.innerHTML=`<h3><span class="sn">Sheet ${k+1}</span>${sh.title}${sh.mem?' · square <span id="memsq">A1</span>':''}</h3><div class="scroll"></div><p class="legend">${sh.inputs}</p>`;
-  host.appendChild(wrap);
-  const rows=sh.rungs.map(r=>r.note?{r,h:26}:{r,h:34+meas(r.items).h*BR});
-  const H=rows.reduce((a,b)=>a+b.h,0)+8;
-  const svg=E('svg',{viewBox:`0 0 ${WD} ${H}`,width:WD,height:H,class:'lad',role:'img','aria-label':`Ladder diagram, ${sh.title}`},wrap.querySelector('.scroll'));
-  E('line',{x1:X0-18,y1:0,x2:X0-18,y2:H,class:'rail'},svg); E('line',{x1:WD-24,y1:0,x2:WD-24,y2:H,class:'rail'},svg);
-  let y=4;
-  rows.forEach(({r,h})=>{
-    if(r.note){const t=E('text',{x:X0,y:y+17,class:'note'},svg);t.textContent=r.note;y+=h;return}
-    r.no=++rungNo; allRungs.push(r);
-    const g=E('g',{},svg), ry=y+48;
-    if(r.desc){const d=E('text',{x:X0,y:y+12,class:'desc'},g); d.textContent=r.desc}
-    const n=E('text',{x:X0-26,y:ry+4,class:'rn','text-anchor':'end'},g); n.textContent=r.no;
-    E('line',{x1:X0-18,y1:ry,x2:X0,y2:ry,class:'w'},g);
-    const ex=drawSeries(g,r.items,X0,ry);
-    E('line',{x1:ex,y1:ry,x2:COILX-15,y2:ry,class:'w'},g);
-    const cg=E('g',{class:'coil'},g);
-    if(r.load) E('rect',{x:COILX-15,y:ry-12,width:30,height:24,rx:3,class:'s cf'},cg);
-    else E('circle',{cx:COILX,cy:ry,r:14,class:'s cf'},cg);
-    const cn=E('text',{x:COILX,y:ry-20,class:'nm','text-anchor':'middle'},cg); cn.textContent=DISP[r.coil]||r.coil;
-    if(r.tag){const t=E('text',{x:COILX,y:ry+3.5,class:'tg','text-anchor':'middle'},cg);t.textContent=r.tag}
-    E('line',{x1:COILX+15,y1:ry,x2:WD-24,y2:ry,class:'w'},g);
-    r._xr=E('text',{x:COILX+22,y:ry+17,class:'xr'},g);
-    live.push({el:cg,r:r.load?'BELL':r.coil,k:'coil'});
-    y+=h;
-  });
-}
-const sheetsEl=$('sheets');
-SHEETS.forEach((s,k)=>renderSheet(s,k,sheetsEl));
-// cross-references: which rungs use each relay's contacts
-(function(){
-  const uses=[];
-  const walk=(items,no)=>items.forEach(it=>{if(it.t==='par')it.b.forEach(b=>walk(b,no));else if(!it.inp)uses.push({r:it.r,no,nc:it.t==='nc'})});
-  allRungs.forEach(r=>walk(r.items,r.no));
-  const match=(coil,r)=>r===coil||(r==='Ci'&&/^C[A-E]$/.test(coil))||(r==='Rj'&&/^R[1-5]$/.test(coil));
-  allRungs.forEach(r=>{ if(r.load) return;
-    const seen=new Set(), list=[];
-    uses.filter(u=>match(r.coil,u.r)).forEach(u=>{const k=(u.nc?'/':'')+u.no; if(!seen.has(k)){seen.add(k);list.push(k)}});
-    r._xr.textContent=list.join(' ');
-  });
-})();
-// legend symbols
-(function(){
-  const items=[[{t:'no'},'Normally open contact: closes when its relay operates'],[{t:'nc'},'Normally closed contact: opens when its relay operates'],
-    [{t:'no',inp:1},'Switch or cam on the machine'],[{t:'no',inp:1,pb:1},'Pushbutton'],['coil','Relay coil; SR marks slow-release'],['lit','Lit: contact closed or coil energised, live']];
-  const host=$('lgd');
-  items.forEach(([sym,txt])=>{
-    const d=document.createElement('div'); d.className='li';
-    const s=E('svg',{viewBox:'0 0 62 36',width:62,height:36,'aria-hidden':'true'},d);
-    if(sym==='coil'){E('line',{x1:0,y1:22,x2:17,y2:22,class:'w'},s);E('circle',{cx:31,cy:22,r:12,class:'s cf'},s);E('line',{x1:45,y1:22,x2:62,y2:22,class:'w'},s);const t=E('text',{x:31,y:25.5,class:'tg','text-anchor':'middle'},s);t.textContent='SR'}
-    else if(sym==='lit'){const g=E('g',{class:'on'},s);drawContact(g,{t:'no'},0,22,false)}
-    else drawContact(s,sym,0,22,false);
-    const p=document.createElement('span'); p.textContent=txt; d.appendChild(p); host.appendChild(d);
-  });
-})();
-// help dialog: symbol legend + worked example, drawn with the same primitives as the diagram
-(function(){
-  const syms=[
-    [{t:'no',r:'SQ1'},'Normally open contact','Open at rest. Closes when relay SQ1 is energised.'],
-    [{t:'nc',r:'SQ2'},'Normally closed contact','Closed at rest. Opens when relay SQ2 is energised.'],
-    [{t:'no',r:'CX',inp:1},'Switch or cam','Copper: a contact on the machine itself, worked by the carriage, shaft or whiskers rather than a relay.'],
-    [{t:'no',r:'PB-EX',inp:1,pb:1},'Pushbutton','Closes only while pressed. A slashed pushbutton (like Stop) opens while pressed.'],
-    ['coil','Relay coil','The end of every rung. Energised when the rung conducts; it then switches every contact with its name.'],
-    ['load','Load','A device that is not a relay, here the goal bell.'],
-    ['branch','Junction','A dot where a rung splits into parallel branches or rejoins.'],
-    ['lit','Live state','Amber: contact closed or coil energised right now.'],
-  ];
-  const host=$('helpSyms');
-  syms.forEach(([sym,name,txt])=>{
-    const d=document.createElement('div'); d.className='li';
-    const s=E('svg',{viewBox:'0 0 70 44',width:70,height:44,'aria-hidden':'true'},d);
-    const y=29;
-    if(sym==='coil'){E('line',{x1:0,y1:y,x2:21,y2:y,class:'w'},s);E('circle',{cx:35,cy:y,r:13,class:'s cf'},s);E('line',{x1:49,y1:y,x2:70,y2:y,class:'w'},s);const t=E('text',{x:35,y:y-18,class:'nm','text-anchor':'middle'},s);t.textContent='HOLD'}
-    else if(sym==='load'){E('line',{x1:0,y1:y,x2:21,y2:y,class:'w'},s);E('rect',{x:21,y:y-11,width:28,height:22,rx:3,class:'s cf'},s);E('line',{x1:49,y1:y,x2:70,y2:y,class:'w'},s);const t=E('text',{x:35,y:y-16,class:'nm','text-anchor':'middle'},s);t.textContent='bell'}
-    else if(sym==='branch'){E('line',{x1:0,y1:18,x2:70,y2:18,class:'w'},s);E('line',{x1:0,y1:38,x2:70,y2:38,class:'w'},s);E('line',{x1:20,y1:18,x2:20,y2:38,class:'w'},s);E('line',{x1:50,y1:18,x2:50,y2:38,class:'w'},s);E('circle',{cx:20,cy:18,r:2.6,class:'dot'},s);E('circle',{cx:50,cy:18,r:2.6,class:'dot'},s)}
-    else if(sym==='lit'){const g=E('g',{class:'on'},s);drawContact(g,{t:'no',r:'WSK'},4,y,false)}
-    else drawContact(s,sym,4,y,false);
-    const p=document.createElement('div'); p.innerHTML=`<strong>${name}</strong>${txt}`; d.appendChild(p); host.appendChild(d);
-  });
-  // worked example: start/stop latch
-  const ex=$('helpEx'), y1=58, y2=y1+BR, L=24, Rr=600, cx=480;
-  E('line',{x1:L,y1:4,x2:L,y2:132,class:'rail'},ex); E('line',{x1:Rr,y1:4,x2:Rr,y2:132,class:'rail'},ex);
-  const t=E('text',{x:L+10,y:20,class:'desc'},ex); t.textContent='Start button, or HOLD’s own contact, keeps the HOLD coil energised until the bell rings';
-  E('line',{x1:L,y1:y1,x2:L+30,y2:y1,class:'w'},ex);
-  drawContact(ex,{t:'no',r:'PB-EX',inp:1,pb:1},L+44,y1,false);
-  drawContact(ex,{t:'no',r:'HOLD'},L+44,y2,false);
-  E('line',{x1:L+30,y1:y1,x2:L+44,y2:y1,class:'w'},ex); E('line',{x1:L+30,y1:y2,x2:L+44,y2:y2,class:'w'},ex);
-  E('line',{x1:L+30,y1:y1,x2:L+30,y2:y2,class:'w'},ex);
-  E('line',{x1:L+106,y1:y2,x2:L+120,y2:y2,class:'w'},ex); E('line',{x1:L+120,y1:y2,x2:L+120,y2:y1,class:'w'},ex);
-  E('circle',{cx:L+30,cy:y1,r:2.2,class:'dot'},ex); E('circle',{cx:L+120,cy:y1,r:2.2,class:'dot'},ex);
-  E('line',{x1:L+106,y1:y1,x2:L+120,y2:y1,class:'w'},ex);
-  drawContact(ex,{t:'nc',r:'BELL'},L+150,y1,false); E('line',{x1:L+120,y1:y1,x2:L+150,y2:y1,class:'w'},ex);
-  E('line',{x1:L+212,y1:y1,x2:cx-14,y2:y1,class:'w'},ex);
-  E('circle',{cx,cy:y1,r:14,class:'s cf'},ex); const cn=E('text',{x:cx,y:y1-20,class:'nm','text-anchor':'middle'},ex); cn.textContent='HOLD';
-  E('line',{x1:cx+14,y1:y1,x2:Rr,y2:y1,class:'w'},ex);
-  const a1=E('text',{x:L+75,y:y2+28,class:'xr','text-anchor':'middle'},ex); a1.textContent='holds itself in';
-  const a2=E('text',{x:L+181,y:y1+30,class:'xr','text-anchor':'middle'},ex); a2.textContent='breaks to stop';
-  const dlg=$('help');
-  $('helpOpen').addEventListener('click',()=>{ if(dlg.showModal) dlg.showModal(); else dlg.setAttribute('open','') });
-  $('helpClose').addEventListener('click',()=>dlg.close());
-  dlg.addEventListener('click',e=>{ if(e.target===dlg) dlg.close() });
-})();
-let lastSq='';
-function updateSchematic(S,x,y){
-  const i=idx(x,y), m=memCells[i];
-  const val=r=>{ if(r==='Ci') return !!S['C'+COLS[x]]; if(r==='Rj') return !!S['R'+(y+1)];
-    if(r==='M1ij') return m.b1._on; if(r==='M0ij') return m.b0._on; return !!S[r] };
-  for(const L of live){const on=val(L.r); const act=L.k==='nc'?!on:on; if(L._a!==act){L._a=act;L.el.classList.toggle('on',act)}}
-  const sq=COLS[x]+(y+1); if(sq!==lastSq){lastSq=sq; const e=$('memsq'); if(e) e.textContent=sq}
-}
+renderSheets($('sheets'));
+renderLegend();
+initHelp();
+
 function updateLogic(){
   const now=performance.now(), S={};
   const x=mouse.x, y=mouse.z;
@@ -432,7 +206,7 @@ function updateLogic(){
   let n=0;
   for(const k in logicRelays){setRelay(logicRelays[k],!!S[k]); if(S[k]) n++}
   $('logCount').textContent=`${n} of 33 energised`;
-  updateSchematic(S,x,y);
+  updateSchematic(S,x,y,memCells);
 }
 const pms=()=>Math.max(120,dur('turn')*1000*.9);
 
@@ -537,7 +311,7 @@ canvas.addEventListener('pointerup',e=>{
   if(!down||Math.hypot(e.clientX-down.x,e.clientY-down.y)>5){down=null;return} down=null;
   const p=pick(e); if(!p) return;
   if(p.slot){
-    const s=p.slot, arr=s.type==='h'?h:v; arr[s.x][s.z]=!arr[s.x][s.z]; syncWalls();
+    const s=p.slot, arr=s.type==='h'?maze.h:maze.v; arr[s.x][s.z]=!arr[s.x][s.z]; syncWalls();
     if(mode!=='idle'&&!reachable(mouse,goal)){stop();status('That partition sealed off the goal. Run stopped.')}
     else if(mode==='idle') status(arr[s.x][s.z]?'Partition added.':'Partition removed.');
   } else if(clickMode==='goal'){
