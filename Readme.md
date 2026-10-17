@@ -2,7 +2,7 @@
 
 **[Run the simulation →](https://rupello.github.io/theseus/)**
 
-This is a simulation of [Theseus the Mouse](https://www.technologyreview.com/2018/12/19/138508/mighty-mouse/) built by Clause & Betty Shannon, one of the earliest examples of machine learning.
+This is a simulation of [Theseus the Mouse](https://www.technologyreview.com/2018/12/19/138508/mighty-mouse/) built by Claude (Shannon) & his wife Betty - considered to be one of the earliest examples of machine learning.
 
 The simulation was entirely built by Claude (Opus 5) & may not be historically accurate as I couldn't find any documentation of the wiring.
 
