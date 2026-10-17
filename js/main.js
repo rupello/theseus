@@ -1,5 +1,6 @@
 import {N,H,T,DX,DZ,ARROW,reduce,C,COLS,idx,$} from './config.js';
 import {maze,wallAt,genMaze,reachable} from './maze.js';
+import {state} from './state.js';
 import {renderSheets,updateSchematic} from './ladder/draw.js';
 import {renderLegend} from './ladder/legend.js';
 import {initHelp} from './ladder/help.js';
@@ -111,9 +112,6 @@ const wMat=new THREE.LineBasicMaterial({color:C('--copper')});
 scene.add(mouseG);
 
 /* ---------- simulation ---------- */
-let mem=Array(N*N).fill(-1);
-let mouse={x:0,z:N-1}, angle=0, start={x:0,z:N-1}, goal={x:N-1,z:0};
-let mode='idle', queue=[], cur=null, expMoves=0, recMoves=null, recallSeen=null, clickMode='goal';
 const cellPos=(x,z)=>new THREE.Vector3(x-N/2+.5,0,z-N/2+.5);
 
 const amber=C('--amber');
@@ -174,7 +172,7 @@ const pulses={};
 function pulse(name,ms){pulses[name]=performance.now()+ms}
 const pulsing=(name,now)=>(pulses[name]||0)>now;
 const dirOf=a=>((Math.round(-a/(Math.PI/2))%4)+4)%4;
-function headingNow(){return dirOf(angle)}
+function headingNow(){return dirOf(state.angle)}
 
 /* ---------- wiring diagram (relay ladder) ---------- */
 renderSheets($('sheets'));
@@ -183,25 +181,25 @@ initHelp();
 
 function updateLogic(){
   const now=performance.now(), S={};
-  const x=mouse.x, y=mouse.z;
-  const mt=cur&&cur.type==='move'?cur.t:-1, bt=cur&&cur.type==='bump'?cur.t:-1, tt=cur&&cur.type==='turn'?cur.t:-1;
+  const x=state.mouse.x, y=state.mouse.z;
+  const mt=state.cur&&state.cur.type==='move'?state.cur.t:-1, bt=state.cur&&state.cur.type==='bump'?state.cur.t:-1, tt=state.cur&&state.cur.type==='turn'?state.cur.t:-1;
   const ctr=!(mt>.15&&mt<.85)&&!(bt>.12&&bt<.92);
   S.CX=S.CY=S.CTR=ctr;
   for(let k=0;k<N;k++){S['X'+COLS[k]]=S['C'+COLS[k]]=ctr&&x===k; S['Y'+(k+1)]=S['R'+(k+1)]=ctr&&y===k}
   const det=!(tt>.15&&tt<.85);
-  const hd=tt>=0?dirOf(tt<.5?cur.a0:cur.a1):headingNow();
+  const hd=tt>=0?dirOf(tt<.5?state.cur.a0:state.cur.a1):headingNow();
   ['HN','HE','HS','HW'].forEach((k,j)=>S[k]=det&&hd===j);
   S.DET=det; S.D1=S.HS||S.HW; S.D0=S.HE||S.HW;
   S.W=S.WSK=bt>.35&&bt<.6;
-  S.G=S.BELL=x===goal.x&&y===goal.z;
-  S.HOLD=mode!=='idle'; S.EXPL=mode==='explore'; S.GOAL=mode==='recall';
+  S.G=S.BELL=x===state.goal.x&&y===state.goal.z;
+  S.HOLD=state.mode!=='idle'; S.EXPL=state.mode==='explore'; S.GOAL=state.mode==='recall';
   S.SQ1=pulsing('SQ1',now); S.RD=pulsing('RD',now);
-  const st=mem[idx(x,y)]<0?0:mem[idx(x,y)];
+  const st=state.mem[idx(x,y)]<0?0:state.mem[idx(x,y)];
   S.MIS=S.RD&&det&&st!==hd;
   S.TURN=tt>=0; S.SQ2=tt>=0; S.STEP=pulsing('STEP',now);
   S.SQ3=mt>=0||(bt>=0&&bt<.5); S.LEFT=mt>.15||(bt>.12&&bt<.5); S.BACK=bt>=.5;
   S.WR=mt>=0&&mt<.15; S.CLR=pulsing('CLR',now);
-  S.EM=S.HOLD||!!cur;
+  S.EM=S.HOLD||!!state.cur;
   const drv=S.SQ3||S.BACK; S.MX=drv&&S.D0; S.MY=drv&&!S.D0; S.POL=(S.D1!==S.D0)!==S.BACK;
   let n=0;
   for(const k in logicRelays){setRelay(logicRelays[k],!!S[k]); if(S[k]) n++}
@@ -213,59 +211,58 @@ const pms=()=>Math.max(120,dur('turn')*1000*.9);
 function renderMemory(){
   let n=0, bits=0;
   for(let i=0;i<N*N;i++){
-    const d=mem[i], m=memCells[i];
+    const d=state.mem[i], m=memCells[i];
     setRelay(m.b1,d>=0&&!!(d&2)); setRelay(m.b0,d>=0&&!!(d&1));
     bits+=(m.b1._on?1:0)+(m.b0._on?1:0);
     m.val.textContent=d<0?'—':ARROW[d]+' '+'NESW'[d];
-    m.c.classList.toggle('sel',i===idx(mouse.x,mouse.z)); m.c.classList.toggle('goal',i===idx(goal.x,goal.z));
+    m.c.classList.toggle('sel',i===idx(state.mouse.x,state.mouse.z)); m.c.classList.toggle('goal',i===idx(state.goal.x,state.goal.z));
     arrows[i].visible=d>=0; if(d>=0){arrows[i].rotation.y=-d*Math.PI/2;n++}
-    lampMats[i].emissive.copy(d>=0?amber:new THREE.Color(0)); lampMats[i].emissiveIntensity=i===idx(mouse.x,mouse.z)?1.4:.7;
+    lampMats[i].emissive.copy(d>=0?amber:new THREE.Color(0)); lampMats[i].emissiveIntensity=i===idx(state.mouse.x,state.mouse.z)?1.4:.7;
     lampMats[i].color.set(d>=0?0x6b4a18:0x2b2a26);
   }
-  $('sMem').textContent=n+'/25'; $('memCount').textContent=`${bits} of 50 energised`; $('sExp').textContent=expMoves; $('sRec').textContent=recMoves==null?'—':recMoves;
+  $('sMem').textContent=n+'/25'; $('memCount').textContent=`${bits} of 50 energised`; $('sExp').textContent=state.expMoves; $('sRec').textContent=state.recMoves==null?'—':state.recMoves;
 }
 function status(html){$('status').innerHTML=html}
-function placeGoal(){goalG.position.copy(cellPos(goal.x,goal.z))}
-function placeMouse(){mouseG.position.copy(cellPos(mouse.x,mouse.z))}
+function placeGoal(){goalG.position.copy(cellPos(state.goal.x,state.goal.z))}
+function placeMouse(){mouseG.position.copy(cellPos(state.mouse.x,state.mouse.z))}
 
-function stop(){mode='idle';queue=[];cur=null;placeMouse();mouseG.rotation.y=angle;bodyG.position.set(0,0,0);whiskG.scale.set(1,1,1);
-  headDir=((Math.round(-angle/(Math.PI/2))%4)+4)%4}
+function stop(){state.mode='idle';state.queue=[];state.cur=null;placeMouse();mouseG.rotation.y=state.angle;bodyG.position.set(0,0,0);whiskG.scale.set(1,1,1);
+  state.headDir=((Math.round(-state.angle/(Math.PI/2))%4)+4)%4}
 function begin(m){
   stop();
-  if(!reachable(mouse,goal)){status('The goal is walled off from the mouse. Open a partition first.');renderMemory();return}
-  mode=m;
-  if(m==='explore'){expMoves=0;status('<b>Exploring.</b> Whiskers find each wall; the relay steps to the next direction.')}
-  else {recMoves=0;recallSeen=new Set();status('<b>Running from memory.</b> Following the stored direction in each square.')}
+  if(!reachable(state.mouse,state.goal)){status('The goal is walled off from the mouse. Open a partition first.');renderMemory();return}
+  state.mode=m;
+  if(m==='explore'){state.expMoves=0;status('<b>Exploring.</b> Whiskers find each wall; the relay steps to the next direction.')}
+  else {state.recMoves=0;state.recallSeen=new Set();status('<b>Running from memory.</b> Following the stored direction in each square.')}
   renderMemory();
 }
 function finish(){
-  const m=mode; mode='idle';
-  if(m==='explore') status(`<b>Goal found</b> in ${expMoves} moves. Memory now points the way. Press <b>Run from memory</b>.`);
-  else status(`<b>Goal reached</b> in ${recMoves} moves, straight from memory.`);
+  const m=state.mode; state.mode='idle';
+  if(m==='explore') status(`<b>Goal found</b> in ${state.expMoves} moves. Memory now points the way. Press <b>Run from memory</b>.`);
+  else status(`<b>Goal reached</b> in ${state.recMoves} moves, straight from memory.`);
   renderMemory();
 }
-let headDir=0; // heading as of the end of the queued actions
 function pushDir(d,move){
-  if(d!==headDir){queue.push({type:'turn',d});headDir=d}
-  queue.push({type:move?'move':'bump',d});
+  if(d!==state.headDir){state.queue.push({type:'turn',d});state.headDir=d}
+  state.queue.push({type:move?'move':'bump',d});
 }
 function decide(){
-  if(mouse.x===goal.x&&mouse.z===goal.z){pulse('BELL',1600);finish();return}
-  const i=idx(mouse.x,mouse.z);
+  if(state.mouse.x===state.goal.x&&state.mouse.z===state.goal.z){pulse('BELL',1600);finish();return}
+  const i=idx(state.mouse.x,state.mouse.z);
   pulse('SQ1',pms()); pulse('RD',pms()*.8);
-  if(mode==='recall'){
-    const d=mem[i];
-    if(d<0||wallAt(mouse.x,mouse.z,d)||recallSeen.has(i)){
-      mode='explore'; expMoves=0;
-      status(d>=0&&wallAt(mouse.x,mouse.z,d)?'<b>Memory stale</b>: a wall now blocks the stored path. Re-exploring.':'<b>Memory incomplete</b> for this route. Re-exploring.');
-    } else { recallSeen.add(i); pushDir(d,true); return }
+  if(state.mode==='recall'){
+    const d=state.mem[i];
+    if(d<0||wallAt(state.mouse.x,state.mouse.z,d)||state.recallSeen.has(i)){
+      state.mode='explore'; state.expMoves=0;
+      status(d>=0&&wallAt(state.mouse.x,state.mouse.z,d)?'<b>Memory stale</b>: a wall now blocks the stored path. Re-exploring.':'<b>Memory incomplete</b> for this route. Re-exploring.');
+    } else { state.recallSeen.add(i); pushDir(d,true); return }
   }
   // Shannon's rule: start one quarter-turn past the last exit, rotate until a whisker finds no wall.
   // Relays at rest read 00 (north), so an unvisited square is tried from east first, as in the wiring diagram.
   pulse('STEP',pms());
-  let d=((mem[i]<0?0:mem[i])+1)%4;
+  let d=((state.mem[i]<0?0:state.mem[i])+1)%4;
   for(let k=0;k<4;k++){
-    if(!wallAt(mouse.x,mouse.z,d)){mem[i]=d;pulse('WR',pms());renderMemory();pushDir(d,true);return}
+    if(!wallAt(state.mouse.x,state.mouse.z,d)){state.mem[i]=d;pulse('WR',pms());renderMemory();pushDir(d,true);return}
     pushDir(d,false);
     d=(d+1)%4;
   }
@@ -273,15 +270,15 @@ function decide(){
 // fix pushDir ordering with heading tracking
 function dur(type){const s=+$('speed').value, k=2.2/s; return (type==='move'?.55:type==='turn'?.28:.32)*k}
 function startAction(a){
-  cur={...a,t:0,dur:dur(a.type),a0:angle,from:cellPos(mouse.x,mouse.z)};
-  if(a.type==='turn'){let target=-a.d*Math.PI/2, delta=((target-angle)%(2*Math.PI)+3*Math.PI)%(2*Math.PI)-Math.PI; cur.a1=angle+delta}
-  if(a.type==='move'){cur.to=cellPos(mouse.x+DX[a.d],mouse.z+DZ[a.d])}
+  state.cur={...a,t:0,dur:dur(a.type),a0:state.angle,from:cellPos(state.mouse.x,state.mouse.z)};
+  if(a.type==='turn'){let target=-a.d*Math.PI/2, delta=((target-state.angle)%(2*Math.PI)+3*Math.PI)%(2*Math.PI)-Math.PI; state.cur.a1=state.angle+delta}
+  if(a.type==='move'){state.cur.to=cellPos(state.mouse.x+DX[a.d],state.mouse.z+DZ[a.d])}
 }
 function endAction(){
-  const a=cur; cur=null;
-  if(a.type==='turn'){angle=a.a1;mouseG.rotation.y=angle}
-  if(a.type==='move'){mouse.x+=DX[a.d];mouse.z+=DZ[a.d];placeMouse(); if(mode==='explore')expMoves++; else if(mode==='recall')recMoves++;
-    if(expMoves>3000){status('Stopped after 3000 moves.');stop()} renderMemory()}
+  const a=state.cur; state.cur=null;
+  if(a.type==='turn'){state.angle=a.a1;mouseG.rotation.y=state.angle}
+  if(a.type==='move'){state.mouse.x+=DX[a.d];state.mouse.z+=DZ[a.d];placeMouse(); if(state.mode==='explore')state.expMoves++; else if(state.mode==='recall')state.recMoves++;
+    if(state.expMoves>3000){status('Stopped after 3000 moves.');stop()} renderMemory()}
   if(a.type==='bump'){bodyG.position.set(0,0,0);whiskG.scale.set(1,1,1);pulse('STEP',pms()*.6)}
 }
 
@@ -312,24 +309,24 @@ canvas.addEventListener('pointerup',e=>{
   const p=pick(e); if(!p) return;
   if(p.slot){
     const s=p.slot, arr=s.type==='h'?maze.h:maze.v; arr[s.x][s.z]=!arr[s.x][s.z]; syncWalls();
-    if(mode!=='idle'&&!reachable(mouse,goal)){stop();status('That partition sealed off the goal. Run stopped.')}
-    else if(mode==='idle') status(arr[s.x][s.z]?'Partition added.':'Partition removed.');
-  } else if(clickMode==='goal'){
-    goal={...p.cell}; placeGoal();
-    if(mode!=='idle'&&!reachable(mouse,goal)){stop();status('The new goal square is walled off.')}
-    else if(mode==='idle') status('Goal moved. The stored memory still points to the old goal.');
+    if(state.mode!=='idle'&&!reachable(state.mouse,state.goal)){stop();status('That partition sealed off the goal. Run stopped.')}
+    else if(state.mode==='idle') status(arr[s.x][s.z]?'Partition added.':'Partition removed.');
+  } else if(state.clickMode==='goal'){
+    state.goal={...p.cell}; placeGoal();
+    if(state.mode!=='idle'&&!reachable(state.mouse,state.goal)){stop();status('The new goal square is walled off.')}
+    else if(state.mode==='idle') status('Goal moved. The stored memory still points to the old goal.');
     renderMemory();
   } else {
-    stop(); mouse={...p.cell}; start={...p.cell}; placeMouse(); status('Mouse placed. Press <b>Explore</b> or <b>Run from memory</b>.'); renderMemory();
+    stop(); state.mouse={...p.cell}; state.start={...p.cell}; placeMouse(); status('Mouse placed. Press <b>Explore</b> or <b>Run from memory</b>.'); renderMemory();
   }
 });
-function toStart(){stop();mouse={...start};placeMouse()}
+function toStart(){stop();state.mouse={...state.start};placeMouse()}
 $('bExplore').onclick=()=>{toStart();begin('explore')};
 $('bRecall').onclick=()=>{toStart();begin('recall')};
-$('bClear').onclick=()=>{stop();pulse('CLR',500);mem.fill(-1);expMoves=0;recMoves=null;status('Memory cleared. All relays released.');renderMemory()};
-$('bNew').onclick=()=>{stop();pulse('CLR',500);genMaze();syncWalls();mem.fill(-1);expMoves=0;recMoves=null;mouse={...start};placeMouse();status('New maze. Memory cleared.');renderMemory()};
-$('mGoal').onclick=()=>{clickMode='goal';$('mGoal').setAttribute('aria-pressed','true');$('mMouse').setAttribute('aria-pressed','false')};
-$('mMouse').onclick=()=>{clickMode='mouse';$('mMouse').setAttribute('aria-pressed','true');$('mGoal').setAttribute('aria-pressed','false')};
+$('bClear').onclick=()=>{stop();pulse('CLR',500);state.mem.fill(-1);state.expMoves=0;state.recMoves=null;status('Memory cleared. All relays released.');renderMemory()};
+$('bNew').onclick=()=>{stop();pulse('CLR',500);genMaze();syncWalls();state.mem.fill(-1);state.expMoves=0;state.recMoves=null;state.mouse={...state.start};placeMouse();status('New maze. Memory cleared.');renderMemory()};
+$('mGoal').onclick=()=>{state.clickMode='goal';$('mGoal').setAttribute('aria-pressed','true');$('mMouse').setAttribute('aria-pressed','false')};
+$('mMouse').onclick=()=>{state.clickMode='mouse';$('mMouse').setAttribute('aria-pressed','true');$('mGoal').setAttribute('aria-pressed','false')};
 addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return; if(e.key==='1')$('bExplore').click(); if(e.key==='2')$('bRecall').click()});
 
 /* ---------- loop ---------- */
@@ -338,24 +335,24 @@ new ResizeObserver(resize).observe(stage); resize();
 const clock=new THREE.Clock(); const ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
 function tick(){
   const dt=Math.min(clock.getDelta(),.05), time=clock.elapsedTime;
-  if(mode!=='idle'||cur){
-    if(!cur&&!queue.length&&mode!=='idle') decide();
-    if(!cur&&queue.length) startAction(queue.shift());
-    if(cur){
-      cur.t+=dt/cur.dur; const t=Math.min(cur.t,1), e=ease(t);
-      if(cur.type==='turn') mouseG.rotation.y=cur.a0+(cur.a1-cur.a0)*e;
-      if(cur.type==='move'){mouseG.position.lerpVectors(cur.from,cur.to,e); bodyG.position.y=Math.abs(Math.sin(t*Math.PI*3))*.012}
-      if(cur.type==='bump'){const b=Math.sin(t*Math.PI); bodyG.position.set(0,0,-b*.17); whiskG.scale.set(1-b*.35,1,1)}
+  if(state.mode!=='idle'||state.cur){
+    if(!state.cur&&!state.queue.length&&state.mode!=='idle') decide();
+    if(!state.cur&&state.queue.length) startAction(state.queue.shift());
+    if(state.cur){
+      state.cur.t+=dt/state.cur.dur; const t=Math.min(state.cur.t,1), e=ease(t);
+      if(state.cur.type==='turn') mouseG.rotation.y=state.cur.a0+(state.cur.a1-state.cur.a0)*e;
+      if(state.cur.type==='move'){mouseG.position.lerpVectors(state.cur.from,state.cur.to,e); bodyG.position.y=Math.abs(Math.sin(t*Math.PI*3))*.012}
+      if(state.cur.type==='bump'){const b=Math.sin(t*Math.PI); bodyG.position.set(0,0,-b*.17); whiskG.scale.set(1-b*.35,1,1)}
       if(t>=1) endAction();
     }
   }
   cheese.rotation.y=time*.6; goalG.position.y=Math.sin(time*2)*.004;
-  if(mode==='idle'&&!cur) head.rotation.y=Math.sin(time*1.3)*.15;
+  if(state.mode==='idle'&&!state.cur) head.rotation.y=Math.sin(time*1.3)*.15;
   updateLogic();
   controls.update(); renderer.render(scene,camera); requestAnimationFrame(tick);
 }
 
 genMaze(); syncWalls(); placeGoal(); placeMouse(); renderMemory();
-if(!reachable(mouse,goal)){genMaze();syncWalls()}
+if(!reachable(state.mouse,state.goal)){genMaze();syncWalls()}
 if(!reduce) setTimeout(()=>begin('explore'),700); else status('Ready. Press <b>Explore</b> to start.');
 tick();
